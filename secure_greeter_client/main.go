@@ -64,7 +64,7 @@ import (
 	"log"
 	"strconv"
 
-	pb "github.com/goblimey/secure.helloworld/helloworld"
+	pb "github.com/goblimey/grpc/helloworld"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
