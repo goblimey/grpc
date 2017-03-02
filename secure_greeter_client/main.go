@@ -5,19 +5,25 @@
  * authorised.  Depending on the mechanism used to do that, it may also need
  * to use an https connection to prevent a "man in the middle" attack.
  *
- * This is a reworked version of the hello world example to show how this can be
- * done.  The client identifies itself using an OAUTH token.  To prevent somebody
- * intercepting the requests, copying the token and issuing their own bogus
- * requests, the connection is made through an https channel.
+ * This is a version of the client from the hello world example, reworked to show
+ * how this can be done.  The client identifies itself using an OAUTH token.  To
+ * prevent somebody intercepting the requests, copying the token and issuing their
+ * own bogus requests, the connection is made through an https channel.
  *
  * This is work in progress.  At present the OAUTH token is a hard-wired fake.  The
  * client always issues the same token, and the server expects to see only that
- * token.  It is planned that in a future version, the client will fetch a token at
- * run time from an OAUTH framework and the server will use the same framework to
+ * token.  I plan that in a future version, the client will fetch a token at run
+ * time from an OAUTH framework and the server will use the same framework to
  * validate the token.
  *
- * This software is Copyright 2015 Google and 2017 Simon Ritchie.  It's distributed
- * under the same licence conditions as the original from Google:
+ * Simple usage (localhost):
+ *
+ *    $ secure_greeter_client \
+ *         -certfile=/home/simon/ca.certificate/selfsigned.crt
+ *
+ * The original software is Copyright 2015 Google and the changes 2017 Simon
+ * Ritchie.  This version is distributed under the same licence conditions as
+ * the original from Google:
  *
  * Copyright 2015, Google Inc.
  * All rights reserved.
@@ -56,7 +62,7 @@ import (
 	"flag"
 	"io/ioutil"
 	"log"
-	"os"
+	"strconv"
 
 	pb "github.com/goblimey/secure.helloworld/helloworld"
 	"golang.org/x/net/context"
@@ -72,26 +78,35 @@ import (
 )
 
 const (
-	address     = "localhost:50051"
 	defaultName = "world"
 )
 
 var (
-	verbose = flag.Bool("v", false, "verbose mode")
+	verbose  = flag.Bool("v", false, "verbose mode")
+	port     = flag.Int("p", 50061, "port")
+	server   = flag.String("server", "localhost", "the server")
+	certfile = flag.String("certfile", "", "the certificate file")
 )
 
 func main() {
 	flag.Parse()
-	// Get OAUTH token.  In the real world the client would get a
-	// token from an OAUTH source such as Hydra, and the server would check with the
-	// OAUTH source that the token is valid.
+
+	address := *server + ":" + strconv.Itoa(*port) // "localhost;50061"
+
+	// The dial options control the style of connection, for example encrypted
+	// (https) or plain text (http).
+	var opts []grpc.DialOption
+
+	// Get an OAUTH token and create an OAUTH dial option.
 	//
-	// Currently the token is a hard-wired fake.  The client always sends and the
-	// server always expects this value.
+	// Currently the token is a hard-wired fake.  The client always sends this
+	// token and the server always expects to receive it.  In the real world the
+	// client would get a token from an OAUTH source such as a Hydra system, and
+	// the server would check with the OAUTH server that the token is valid.
 	if *verbose {
 		log.Printf("getting auth token")
 	}
-	tokenText := "{\"access_token\":\"rTO69tZATSgSqamjQn7v9HA\",\"expires_in\":3600,\"refresh_token\":\"xBqf2OWbT_KvWW8LHOPF0A\",\"scope\":\"everything\",\"token_type\":\"Bearer\"}"
+	tokenText := "{\"access_token\":\"rTO69tZATgSqamjQn7v9HA\",\"expires_in\":3600,\"refresh_token\":\"xBqf2OWbT_KvWW8LHOPF0A\",\"scope\":\"everything\",\"token_type\":\"Bearer\"}"
 	var token oauth2.Token
 	if err := json.Unmarshal([]byte(tokenText), &token); err != nil {
 		log.Fatalf("error unmarshalling JSON from OAUTH token: %v", err)
@@ -100,22 +115,34 @@ func main() {
 		log.Printf("got auth token %s type %s", token.AccessToken, token.TokenType)
 	}
 
-	// Create the OAUTH dial option from tye token
+	// Create the OAUTH dial option from the token
 	credentials := oauth.NewOauthAccess(&token)
 	oauthDialOption := grpc.WithPerRPCCredentials(credentials)
 
-	// Load the self-signed CA certificate.  I generated this using Jason Woods'
-	// lc_tlscert app, which is part of github.com/driskell/log-courier.  BEWARE
-	// I found other instructions on the web to generate a certificate and the
-	// result didn't work for this purpose.  Install log-courier and use that:
+	// add the interceptor as a server option
+	opts = append(opts, oauthDialOption)
+
+	// Load the self-signed CA certificate.  If the client and server run on
+	// different machines you have to generate this on the server and copy it
+	// to the client machine.  I generated mine using Jason Woods' lc_tlscert app:
 	//
 	//    go get github.com/driskell/log-courier
 	//    go intall github.com/driskell/log-courier/lc-tlscert
 	//    lc-tlscert
+	//    (Give your server name as the common name)
 	//
-	// Give your server name as the common name (for example localhost)
+	// The common name must match the server name that you use when you run the
+	// client.  If the client and server are on the same machine you can use
+	// "localhost".
+	//
+	// That processes creates a .crt file and a .key file.  You only need a copy of
+	// the .crt file.  The .key file contains the private key and it stays on the
+	// server.
+	//
+	// Danger Will Robinson:  I found instructions on the web showing other ways to
+	// generate a self-signed certificate but the result didn't work for gRPC.
 
-	caCert, err := ioutil.ReadFile("/home/simon/ca.certificate/goblimey.com.selfsigned.crt")
+	caCert, err := ioutil.ReadFile(*certfile)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -125,11 +152,13 @@ func main() {
 	tlsConfig := tls.Config{RootCAs: caCertPool}
 
 	tlsDialOption := grpc.WithTransportCredentials(grpccred.NewTLS(&tlsConfig))
+	// add the TLS as a server option
+	opts = append(opts, tlsDialOption)
 
 	if *verbose {
 		log.Printf("connecting to server %s", address)
 	}
-	conn, err := grpc.Dial(address, oauthDialOption, tlsDialOption)
+	conn, err := grpc.Dial(address, opts...)
 	if err != nil {
 		log.Fatalf("did not connect: %v", err)
 	}
@@ -144,8 +173,8 @@ func main() {
 
 	// Contact the server and print out its response.
 	name := defaultName
-	if len(os.Args) > 1 {
-		name = os.Args[1]
+	if len(flag.Args()) > 1 {
+		name = flag.Arg(1)
 	}
 	r, err := c.SayHello(context.Background(), &pb.HelloRequest{Name: name})
 	if err != nil {

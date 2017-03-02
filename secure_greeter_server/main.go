@@ -12,9 +12,15 @@
  *
  * This is work in progress.  At present the OAUTH token is a hard-wired fake.  The
  * client always issues the same token, and the server expects to see only that
- * token.  It is planned that in a future version, the client will fetch a token at
- * run time from an OAUTH framework and the server will use the same framework to
+ * token.  I plan that in a future version, the client will fetch a token at run
+ * time from an OAUTH framework and the server will use the same framework to
  * validate the token.
+ *
+ * Simple usage:
+ *
+ *     $ secure_greeter_server \
+ *         --certfile=/home/simon/ca.certificate/selfsigned.crt \
+ *         --keyfile=/home/simon/ca.certificate/selfsigned.key
  *
  * This software is Copyright 2015 Google and 2017 Simon Ritchie.  It's distributed
  * under the same licence conditions as the original from Google:
@@ -58,6 +64,8 @@ import (
 	"flag"
 	"log"
 	"net"
+	"os"
+	"strconv"
 
 	pb "github.com/goblimey/secure.helloworld/helloworld"
 	"golang.org/x/net/context"
@@ -68,12 +76,11 @@ import (
 	"google.golang.org/grpc/reflection"
 )
 
-const (
-	port = ":50051"
-)
-
 var (
-	verbose = flag.Bool("v", false, "verbose mode")
+	verbose  = flag.Bool("v", false, "verbose mode")
+	port     = flag.Int("p", 50061, "port")
+	certfile = flag.String("certfile", "", "certificate file")
+	keyfile  = flag.String("keyfile", "", "private key file")
 )
 
 // server is used to implement helloworld.GreeterServer.
@@ -87,47 +94,92 @@ func (s *server) SayHello(ctx context.Context, in *pb.HelloRequest) (*pb.HelloRe
 
 func main() {
 	flag.Parse()
-	lis, err := net.Listen("tcp", port)
+
+	portStr := ":" + strconv.Itoa(*port) // ":50061"
+	lis, err := net.Listen("tcp", portStr)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
+	// The server options control the style of the gRPC connection, for example
+	// encrypted (https) or plain text (http).
 	var opts []grpc.ServerOption
-	// add the interceptor as a server option
-	opts = append(opts, grpc.UnaryInterceptor(AuthUnaryInterceptor))
 
-	// TLS connection setup uses a combination of:
+	// Create a server option from the OAUTH interceptor.
+	opts = append(opts, grpc.UnaryInterceptor(OAuthUnaryInterceptor))
+
+	// Creating a server option for the TLS connaction is more complicated.  The
+	// setup uses wisdom from:
+	//
 	//     http://stackoverflow.com/questions/22666163/golang-tls-with-selfsigned-certificate
 	// and
 	//    http://www.bite-code.com/2015/06/25/tls-mutual-auth-in-golang/
 	//
-	// Create the self-signed cert using lc-tlscert:
+	// To make the connection work you need a self-signed certificate and a
+	// matching private key.  Create these using lc-tlscert:
+	//
 	//    go get github.com/driskell/log-courier
 	//    go install github.com/driskell/log-courier/lc-tlscert
+	//    lc-tlscert
+	//    (Give your server name as the common name)
+	//
+	// The common name must match the server name that the client will use to
+	// connect.  If the client and server are on the same machine you can use
+	// "localhost".
+	//
+	// lc-tlscert produces a .key file containing your server's private key and a
+	// .cert file containing a certificate.  The client needs to be able to see the
+	// certificate data.  If the client is on another machine, you need to provide
+	// it with a copy of the .crt file.
+	//
+	// Danger Will Robinson:  I found instructions on the web showing other ways to
+	// generate a self-signed certificate but the result didn't work for gRPC.
+	//
+	// Load509KeyPair doesn't return an error if the files don't exist(!) so we
+	// check that they do before trying to use them.
 
-	cert, err := tls.LoadX509KeyPair("/home/simon/ca.certificate/selfsigned.crt",
-		"/home/simon/ca.certificate/selfsigned.key")
+	if len(*certfile) == 0 || len(*keyfile) == 0 {
+		log.Fatalf("you must specify the cert file and the key file")
+	}
+
+	if _, err := os.Stat(*keyfile); os.IsNotExist(err) {
+		log.Fatalf("cannot open the key file %s", *keyfile)
+	}
+
+	if _, err := os.Stat(*certfile); os.IsNotExist(err) {
+		log.Fatalf("cannot open the cert file %s", *certfile)
+	}
+
+	// Load the public certificate and the private key files.
+	cert, err := tls.LoadX509KeyPair(*certfile, *keyfile)
+
 	config := tls.Config{Certificates: []tls.Certificate{cert}}
 
+	// Create the TLS server option.
 	serverOption := grpc.Creds(grpccred.NewTLS(&config))
 
+	// Create the gRPC server.
 	opts = append(opts, serverOption)
 
 	s := grpc.NewServer(opts...)
 
+	// Register the server.
 	pb.RegisterGreeterServer(s, &server{})
-	// Register reflection service on gRPC server.
+
+	// Register the reflection service on gRPC server.
 	reflection.Register(s)
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
 	}
 }
 
-// AuthUnaryInterceptor is an interceptor function.  It intercepts the gRPC
-// request, extracts the OAUTH token and the user-id and validates them.
-// https://godoc.org/google.golang.org/grpc#UnaryServerInterceptor
-// https://texlution.com/post/oauth-and-grpc-go/
-func AuthUnaryInterceptor(
+// OAuthUnaryInterceptor intercepts the gRPC request, extracts the OAUTH token and
+// the user-id and validates them.  This version uses the wisdom in
+//
+//     https://godoc.org/google.golang.org/grpc#UnaryServerInterceptor
+// and
+//     https://texlution.com/post/oauth-and-grpc-go/
+func OAuthUnaryInterceptor(
 	ctx context.Context,
 	req interface{},
 	info *grpc.UnaryServerInfo,
@@ -140,15 +192,15 @@ func AuthUnaryInterceptor(
 		return nil, grpc.Errorf(codes.Unauthenticated, "no metadata in context")
 	}
 
-	// validate 'authorization' metadata
+	// validate the 'authorization' metadata
 	// like headers, the value is an slice []string
-	uid, err := ValidationOAUTHToken(md["authorization"])
+	uid, err := validateOAUTHToken(md["authorization"])
 	if err != nil {
 		return nil, grpc.Errorf(codes.Unauthenticated, "authentication failed - %s",
 			err.Error())
 	}
 
-	// add user ID to the context
+	// add the user ID to the context
 	newCtx := context.WithValue(ctx, "user_id", uid)
 
 	// handle scopes?
@@ -156,7 +208,14 @@ func AuthUnaryInterceptor(
 	return handler(newCtx, req)
 }
 
-func ValidationOAUTHToken(authHeaders []string) (uint64, error) {
+// validateOAUTHToken searches through a slice of authorization headers.  If it
+// finds any containing an OAUTH token it validates them.  It reurns the ID of the
+// user that owns the first valid token that it finds.
+//
+// This version is a fake.  It has a hard-wired OAUTH token.  It accepts only that
+// and if it finds it, return userID 2.  In a real application it would use an
+// OAUTH server to validate and fetch the user ID.
+func validateOAUTHToken(authHeaders []string) (uint64, error) {
 	if *verbose {
 		log.Printf("%d authorization headers", len(authHeaders))
 	}
@@ -165,7 +224,7 @@ func ValidationOAUTHToken(authHeaders []string) (uint64, error) {
 			if *verbose {
 				log.Printf("authorization header %s", authHeaders[i])
 			}
-			if authHeaders[i] == "Bearer rTO69tZATSgSqamjQn7v9HA" {
+			if authHeaders[i] == "Bearer rTO69tZATgSqamjQn7v9HA" {
 				if *verbose {
 					log.Printf("authorised")
 				}
