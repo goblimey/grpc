@@ -81,24 +81,80 @@ $ greeter_client
 
 ```
 
-To run the secure version of the server you need a certificate file and a key file containing the certificate's private key.
-If you already have a digital certificate
+For initial testing you can also run the secure client and server on your local machine
+in the same way,
+but they need a bit more information.
+
+A TLS connection needs a matching pair of files, a certificate and key.
+The key is a private key and the certificate contains the matching public key.
+For a self-contained system like this,
+where you control both the client and server,
+you can create a self-signed certificate using the lc-tlscert application:
+
+```
+github.com/driskell/log-courier
+go install github.com/driskell/log-courier/lc-tlscert
+lc-tlscert
+```
+
+This will ask a series of questions which it uses to fill in the certificate.
+The first is the common name of the certificate - use localhost.
+The rest of the questins ask for things like your address.
+You can give dummy values for those.
+
+Now you can run the secure server:
+
+```
+$ secure_greeter_server -certfile={name of crt file} -keyfile={name of .key file}
+```
+
+and the secure client:
+
+```
+$ secure_greeter_client -certfile={name of .crt file}  # connect to localhost
+2017/03/04 18:15:10 Greeting: Hello world
+```
+
+That test is a bit artificial.
+In a real application
+the client and server will usually run on different machines.
+
+I have a Virtual Private Server (VPS),
+a droplet from Digital Ocean.
+It has a fixed IP address and a domain name,
+so I can connect to it across the internet.
+For a proper test I installed the client on that
+and created a certificate pair.
+I copied the certificate file onto my Pine64 single board computer at home,
+installed the client and ran it a few times:
+
+```
+$ secure_greeter_client -server=mydomain.com -certfile={.crt file}
+```
+
+(The -server option tells the client the name of the server
+to connect to.  The default is localhost.)
+
+The results were mixed.
+Most of the times the client worked,
+but in some cases only after some error messages
+that showed that it was retrying the request.
+A few attempts failed altogether.
+I think some tuning of the client and server is required,
+perhaps increasing the timeout period and 
+the number of retries.
+ 
+To run the secure greeter server on a remote machine like this,
+you need to set the common name of your certificate
+to the DNS name of the server.
+
+If you have a digital certificate for your server
 from an organisation like
 Verisign or Let's Encrypt,
-you should be able to use that.
-Otherwise, you can generate a self-signed certificate and key using lc-tlscert
-as shown below.
+you should be able to use that 
+rather than creating a self-signed certificate.
 
-If you run both client and server on the same machine,
-use a self-signed certificate.
-
-If you have a server with a DNS name,
-you can run the greeter server on that and
-run the greeter client on your local machine.
-The -server option tells the client the name of the server
-to connect to.
-
-For that to work,
+To support a TLS connection from a remote client,
 your server must have a complete set of
 Domain Name Service (DNS) records,
 including the reverse lookup - the client must be able to 
@@ -108,48 +164,8 @@ If there is no reverse DNS translation,
 the connection will be slow and unreliable at best
 and may not work at all.
 
-This is how you create the self-signed certificate on the server machine:
-
-```
-github.com/driskell/log-courier
-go install github.com/driskell/log-courier/lc-tlscert
-lc-tlscert
-```
-
-This will ask a series of questions.
-The first is the common name of the cerificate.
-use your server name as the common name.
-If you run both client and server on the same machine, you can use use the common name 
-"localhost", otherwise use the DNS name, 'mydomain.com' or whatever.
-
-To run the server:
-
-```
-$ secure_greeter_server -certfile={name of .crt file} -keyfile=\{name of .key file}
-```
-
-To run the client on a different machine from the server, you need a
-copy of the certificate file on the client machine.
-(You don't need to copy the .key file.)  
-
-To run the client:
-
-```
-$ secure_greeter_client -server {server name} -certfile={name of .crt file}
-```
-
-The -v (verbose) option at both ends shows what goes on behind the scenes.
-
-The -h option shows all the other options.
-
-The client needs to know the name of the server (the -server option).
-The default is localhost.
-
-```
-$ secure_greeter_client -certfile={name of .crt file}  # connect to localhost
-```
-
-The server name MUST match the common name in the certificate.
+When you run the clent,
+the server name MUST match the common name in the certificate.
 If you create a certificate with common name mydomain.com, the client
 must connect using that name,
 even if it's running on the same machine.
@@ -163,5 +179,7 @@ you will get this error:
 
 You can create two certificates, one for mydomain.com and one for localhost.
 
-The software is distributed under the same licence conditions as the original from 
-Google.
+Licence
+=========
+This software is distributed under the same licence conditions as the original from 
+Google.  See the source code.
