@@ -122,7 +122,6 @@ To test that the solution works across an Internet connection,
 I ran the server on a Virtual Private Server (VPS),
 a Digital Ocean "droplet"
 with a fixed IP address and a domain name.
-I created a certificate pair using the domain name as the common name.
 For a client machine I used a Pine64 single board computer.
 The client ran at my house connecting
 through a wired connection to a fairly fast cable modem.
@@ -151,8 +150,8 @@ perhaps increasing the request timeout period and
 the number of retries.
  
 To run the secure greeter server on a remote machine like this,
-you need to set create the certificate on the server 
-and set the common name to the DNS name of the server.
+you need to set create the certificate on the server machine 
+and set the common name to its DNS name.
 Then you need to copy the certificate file to your client machine.
 If you have a digital certificate for your server
 from an organisation like
