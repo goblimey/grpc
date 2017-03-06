@@ -150,7 +150,7 @@ perhaps increasing the request timeout period and
 the number of retries.
  
 To run the secure greeter server on a remote machine like this,
-you need to set create the certificate on the server machine 
+you need to create the certificate on the server machine 
 and set the common name to its DNS name.
 Then you need to copy the certificate file to your client machine.
 If you have a digital certificate for your server
