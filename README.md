@@ -62,9 +62,6 @@ go install github.com/goblimey/grpc/secure_greeter_client
 Running the examples
 ====================
 
-(These instructions assume that your Go project bin directory is in your path.
-If not, you will need to supply the pathnames of the programs when you run them.)
-
 To run Google's examples,
 start two terminal windows.
 Run the server in one window:
@@ -81,14 +78,14 @@ $ greeter_client
 
 ```
 
-For initial testing you can also run the secure client and server on your local machine
+You can run the secure client and server on your local machine
 in the same way,
 but they need a bit more information.
 
 A TLS connection needs a matching pair of files containing a certificate and a key.
-The key is a private key and the certificate conains the matching public key.
+The key is a private key and the certificate contains the matching public key.
 For a self-contained system like this
-where you control both the client and server,
+where you control both the client and server software,
 you can create a self-signed certificate using the lc-tlscert application:
 
 ```
@@ -162,7 +159,7 @@ rather than creating a self-signed certificate.
 To support a TLS connection from a remote client,
 your server must have a complete set of
 Domain Name Service (DNS) records,
-including the reverse tanslation - the client must be able to 
+including the reverse translation - the client must be able to 
 translate the server's name to its IP address and translate 
 its IP address back to it's domain name.
 If there is no reverse DNS translation,
