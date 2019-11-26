@@ -1,24 +1,20 @@
 # secure.helloworld
 A version of the grpc Hello World example google.golang.org/grpc/grpc/helloworld 
-with OAUTH and TLS
+with TLS
 
-The source code at google.golang.org/grpc gives example of Go applications
-communicating via grpc over an http connection without any authentication.
-In the real world, a grpc connection should be authenticated or
-authorised.  Depending on the mechanism used to do that it may also need
-to use an https connection.
+The source code at google.golang.org/grpc gives examples of Go applications
+communicating via grpc over a clear-text http connection.
+Many applications require an encrypted HTTPS connection.
+The example here shows how to do that.
+It's a reworked version of Google's hello world example.
 
-This is a reworked version of the hello world example to show how this can be
-done.  The client identifies itself using an OAUTH token.  To prevent somebody
-intercepting the requests, copying the token and issuing their own bogus
-requests, the connection is made through an https channel.
+The solution is in two parts,
+a client and a server.
+The client identifies itself using an authorization token.
+This version uses a fixed token.
+In the real world, the token would be different eaxh time,
+created and validated by a system such as OAUTH.
 
-This is work in progress.The TLS connection is correctly done,
-but at present the OAUTH token is a hard-wired fake.  The
-client always issues the same token, and the server expects to see only that
-token.  I plan that in a future version, the client will fetch a token at
-run time from an OAUTH framework and the server will use the same framework to
-validate the token.
 
 Installation
 ============
@@ -186,5 +182,5 @@ You can create two certificates, one for mydomain.com and one for localhost.
 
 Licence
 =========
-This software is distributed under the same licence conditions as the original from 
-Google.  See the source code.
+This software is distributed under the same licence conditions as Google's original.
+See the source code.
