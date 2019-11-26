@@ -1,6 +1,7 @@
-# secure.helloworld
-A version of the grpc Hello World example google.golang.org/grpc/grpc/helloworld 
-with TLS
+# GRPC over HTTPS
+
+A version of the grpc Hello World example with TLS.
+The original is google.golang.org/grpc/grpc/helloworld.
 
 The source code at google.golang.org/grpc gives examples of Go applications
 communicating via grpc over a clear-text http connection.
